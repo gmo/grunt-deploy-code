@@ -7,44 +7,93 @@
  */
 
 'use strict';
+var http = require('http');
 
 module.exports = function(grunt) {
 
-  // Please see the Grunt documentation for more information regarding task
-  // creation: http://gruntjs.com/creating-tasks
+    function deployToUsage() {
+        grunt.log.writeln('USAGE: grunt deployTo:[environment]:[repoName]');
+        grunt.log.writeln('  environment: This is required (i.e. production, staging, dev)');
+        grunt.log.writeln('  repoName:    If not provided the package name will be used')
+    }
 
-  grunt.registerMultiTask('deploy_code', 'A Grunt plugin which notifies a deployment server it should deploy the latest build.', function() {
-    // Merge task-specific and/or target-specific options with these defaults.
-    var options = this.options({
-      punctuation: '.',
-      separator: ', '
-    });
+    grunt.registerTask('deployTo', 'A task for deploying code', function(environment, repoName) {
 
-    // Iterate over all specified file groups.
-    this.files.forEach(function(f) {
-      // Concat specified files.
-      var src = f.src.filter(function(filepath) {
-        // Warn on and remove invalid source files (if nonull was set).
-        if (!grunt.file.exists(filepath)) {
-          grunt.log.warn('Source file "' + filepath + '" not found.');
-          return false;
-        } else {
-          return true;
+        if( !repoName ) {
+            repoName = grunt.file.readJSON('package.json').name;
         }
-      }).map(function(filepath) {
-        // Read file source.
-        return grunt.file.read(filepath);
-      }).join(grunt.util.normalizelf(options.separator));
 
-      // Handle options.
-      src += options.punctuation;
+        if( !environment || !repoName ) {
+            grunt.log.error('A required parameter is missing!');
+            deployToUsage();
+            return false;
+        }
 
-      // Write the destination file.
-      grunt.file.write(f.dest, src);
+        try{
+            grunt.task.run('preDeployment');
+        }
+        catch(err) {}
 
-      // Print a success message.
-      grunt.log.writeln('File "' + f.dest + '" created.');
+        grunt.task.run(['notifyDeploymentServer:' + environment + ':' + repoName]);
+
+        try{
+            grunt.task.run('postDeployment');
+        }
+        catch(err) {}
+
     });
-  });
+
+    grunt.registerTask(
+        'notifyDeploymentServer',
+        'Notifies a deployment server the latest build is ready to be deployed.',
+        function(environment, repoName) {
+
+            var done = this.async();
+
+            if( !environment || !repoName ) {
+                grunt.log.error('A required parameter is missing!');
+                deployToUsage();
+                done(false);
+            }
+
+            var configFileName = 'deployTo.json';
+            if( !grunt.file.exists(configFileName) ) {
+                grunt.file.write(configFileName, '{ "[environment]": { "key": "12345", "url": "http://blah.domain.org/" } }');
+                grunt.log.error('Please edit the \'deployTo.json\' file with the desired environment settings!')
+                done(false);
+            }
+
+            var config = grunt.file.readJSON(configFileName);
+            if( !config[environment] ) {
+                grunt.log.error('You need to add the environment \'' + environment + '\' to the \'' +configFileName + '\' file!')
+                done(false);
+            }
+            if( !config[environment].url ) {
+                grunt.log.error('You need to add \'url\' to the environment \'' + environment + '\' setting in the \'' +configFileName + '\' file!')
+                done(false);
+            }
+            if( !config[environment].key ) {
+                grunt.log.error('You need to add \'key\' to the environment \'' + environment + '\' setting in the \'' +configFileName + '\' file!')
+                done(false);
+            }
+
+            var url = config[environment].url;
+            if( url.lastIndexOf('/') != (url.length - 1)) {
+                url += '/';
+            }
+
+            http.get(url + repoName + '/?key=' + config[environment].key, function(response) {
+                var statusCode = (response.statusCode);
+                if( statusCode != 200 ) {
+                    grunt.log.error('Error: Deployment server returned the following HTTP status - \'' + statusCode + '\'');
+                    done(false);
+                }
+                done();
+            }).on('error', function(e) {
+                    grunt.log.error('Error: Communication with deployment server failed! - ' + e.message);
+                    done(false);
+                });
+
+        });
 
 };

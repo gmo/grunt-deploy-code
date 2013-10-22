@@ -12,48 +12,52 @@ module.exports = function(grunt) {
 
   // Project configuration.
   grunt.initConfig({
+
+      pkg: grunt.file.readJSON('package.json'),
+
     jshint: {
       all: [
         'Gruntfile.js',
         'tasks/*.js',
-        '<%= nodeunit.tests %>',
+        'test/*_test.js'
       ],
       options: {
-        jshintrc: '.jshintrc',
-      },
+        jshintrc: '.jshintrc'
+      }
     },
 
     // Before generating any new files, remove any previously-created files.
     clean: {
-      tests: ['tmp'],
+      tests: ['tmp']
     },
 
-    // Configuration to be run (and then tested).
-    deploy_code: {
-      default_options: {
+    mochaTest: {
+      all: {
         options: {
+          reporter: 'spec'
         },
-        files: {
-          'tmp/default_options': ['test/fixtures/testing', 'test/fixtures/123'],
-        },
-      },
-      custom_options: {
-        options: {
-          separator: ': ',
-          punctuation: ' !!!',
-        },
-        files: {
-          'tmp/custom_options': ['test/fixtures/testing', 'test/fixtures/123'],
-        },
-      },
-    },
-
-    // Unit tests.
-    nodeunit: {
-      tests: ['test/*_test.js'],
-    },
+        src: ['test/*_test.js']
+      }
+    }
 
   });
+
+    grunt.registerTask('init', function() {
+        grunt.log.writeln('Running init...');
+        return true;
+    });
+    grunt.registerTask('phpunit', function() {
+        grunt.log.writeln('Running phpunit tests...');
+        return true;
+    });
+    grunt.registerTask('mocha', function() {
+        grunt.log.writeln('Running mocha tests...');
+        return true;
+    });
+    grunt.registerTask('cleanUp', function() {
+        grunt.log.writeln('Running clean up...');
+        return true;
+    });
 
   // Actually load this plugin's task(s).
   grunt.loadTasks('tasks');
@@ -61,13 +65,18 @@ module.exports = function(grunt) {
   // These plugins provide necessary tasks.
   grunt.loadNpmTasks('grunt-contrib-jshint');
   grunt.loadNpmTasks('grunt-contrib-clean');
-  grunt.loadNpmTasks('grunt-contrib-nodeunit');
+  grunt.loadNpmTasks('grunt-mocha-test');
 
-  // Whenever the "test" task is run, first clean the "tmp" dir, then run this
-  // plugin's task(s), then test the result.
-  grunt.registerTask('test', ['clean', 'deploy_code', 'nodeunit']);
+  // Tasks
+  grunt.registerTask('build', ['clean','jshint']);
+  grunt.registerTask('default', ['build', 'mochaTest']);
 
-  // By default, lint and run all tests.
-  grunt.registerTask('default', ['jshint', 'test']);
+
+    grunt.registerTask('runTests', ['phpunit','mocha']);
+
+    grunt.registerTask('preDeployment', ['init','runTests']);
+    grunt.registerTask('postDeployment', ['cleanUp']);
+
+    //grunt.registerTask('deployToProd', ['deployCodeTo:prod:sandbox']);
 
 };

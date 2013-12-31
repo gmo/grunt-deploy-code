@@ -8,6 +8,7 @@
 
 'use strict';
 var http = require('http');
+var querystring = require('querystring');
 
 module.exports = function(grunt) {
 
@@ -17,11 +18,14 @@ module.exports = function(grunt) {
         grunt.log.writeln('  repoName:    If not provided the package name will be used')
     }
 
-    grunt.registerTask('deployTo', 'A task for deploying code', function(environment, repoName) {
+    grunt.registerTask('deployTo', 'A task for deploying code', function(environment, repoName, branch) {
 
         if( !repoName ) {
             repoName = grunt.file.readJSON('package.json').name;
         }
+		if( !branch ) {
+			branch = "master";
+		}
 
         if( !environment || !repoName ) {
             grunt.log.error('A required parameter is missing!');
@@ -34,7 +38,7 @@ module.exports = function(grunt) {
         }
         catch(err) {}
 
-        grunt.task.run(['notifyDeploymentServer:' + environment + ':' + repoName]);
+        grunt.task.run(['notifyDeploymentServer:' + environment + ':' + repoName + ':' + branch]);
 
         try{
             grunt.task.run('postDeployment');
@@ -46,7 +50,7 @@ module.exports = function(grunt) {
     grunt.registerTask(
         'notifyDeploymentServer',
         'Notifies a deployment server the latest build is ready to be deployed.',
-        function(environment, repoName) {
+        function(environment, repoName, branch) {
 
             var done = this.async();
 
@@ -58,7 +62,7 @@ module.exports = function(grunt) {
 
             var configFileName = 'deployTo.json';
             if( !grunt.file.exists(configFileName) ) {
-                grunt.file.write(configFileName, '{ "[environment]": { "key": "12345", "url": "http://blah.domain.org/" } }');
+                grunt.file.write(configFileName, '{ "[environment]": { "key": "12345", "host": "blah.domain.org", "port": "80" } }');
                 grunt.log.error('Please edit the \'deployTo.json\' file with the desired environment settings!')
                 done(false);
             }
@@ -68,32 +72,55 @@ module.exports = function(grunt) {
                 grunt.log.error('You need to add the environment \'' + environment + '\' to the \'' +configFileName + '\' file!')
                 done(false);
             }
-            if( !config[environment].url ) {
-                grunt.log.error('You need to add \'url\' to the environment \'' + environment + '\' setting in the \'' +configFileName + '\' file!')
+			if( !config[environment].key ) {
+				grunt.log.error('You need to add \'key\' to the environment \'' + environment + '\' setting in the \'' +configFileName + '\' file!')
+				done(false);
+			}
+            if( !config[environment].host ) {
+                grunt.log.error('You need to add \'host\' to the environment \'' + environment + '\' setting in the \'' +configFileName + '\' file!')
                 done(false);
             }
-            if( !config[environment].key ) {
-                grunt.log.error('You need to add \'key\' to the environment \'' + environment + '\' setting in the \'' +configFileName + '\' file!')
-                done(false);
-            }
+			if( !config[environment].port ) {
+				grunt.log.error('You need to add \'port\' to the environment \'' + environment + '\' setting in the \'' +configFileName + '\' file!')
+				done(false);
+			}
 
-            var url = config[environment].url;
-            if( url.lastIndexOf('/') != (url.length - 1)) {
-                url += '/';
-            }
+            var host = config[environment].host;
+			var port = config[environment].port;
 
-            http.get(url + repoName + '/?key=' + config[environment].key, function(response) {
-                var statusCode = (response.statusCode);
-                if( statusCode != 200 ) {
-                    grunt.log.error('Error: Deployment server returned the following HTTP status - \'' + statusCode + '\'');
-                    done(false);
-                }
-                done();
-            }).on('error', function(e) {
-                    grunt.log.error('Error: Communication with deployment server failed! - ' + e.message);
-                    done(false);
-                });
+			var data = querystring.stringify({
+				key: config[environment].key,
+				env: environment,
+				repo: repoName,
+				branch: branch
+			});
 
-        });
+			var options = {
+				host: host,
+				port: port,
+				path: '/deploy',
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					'Content-Length': Buffer.byteLength(data)
+				}
+			};
+
+			var req = http.request(options, function(response) {
+				var statusCode = (response.statusCode);
+				if( statusCode != 200 ) {
+					grunt.log.error('Error: Deployment server returned the following HTTP status - \'' + statusCode + '\'');
+					done(false);
+				}
+				done();
+			});
+			req.on('error', function(e) {
+				grunt.log.error('Error: Communication with deployment server failed! - ' + e.message);
+				done(false);
+			});
+
+			req.write(data);
+			req.end();
+		});
 
 };

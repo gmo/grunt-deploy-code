@@ -109,7 +109,12 @@ module.exports = function(grunt) {
 			var req = http.request(options, function(response) {
 				var statusCode = (response.statusCode);
 				if( statusCode != 200 ) {
-					grunt.log.error('Error: Deployment server returned the following HTTP status - \'' + statusCode + '\'');
+					grunt.log.error('Error: Deployment server returned the following error...');
+					grunt.log.error('  HTTP STATUS : ' + statusCode);
+					response.setEncoding('utf8');
+					response.on('data', function (chunk) {
+						grunt.log.error('  DATA        : ' + chunk);
+					});
 					done(false);
 				}
 				done();
